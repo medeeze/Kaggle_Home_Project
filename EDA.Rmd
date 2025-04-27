@@ -1,0 +1,207 @@
+---
+title: "EDA - Carl Freeze"
+output:
+  html_document:
+    toc: true
+    toc-depth: 3
+    toc-floating: true
+    toc-title: Table of Contents
+execute:
+  include: true
+  eval: true
+  warning: false
+  message: false
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+install.packages("ggplot2", repos = "https://cran.rstudio.com")
+library(ggplot2)
+```
+# Part 1
+## Introduction
+### Business Problem Statement
+- Home Credit would like to provide customers with the ability to request loans despite having a lack of credit history. Without credit history, it is difficult to predict the likeliness of a given customer to pay off their debt which is a risk lenders usually avoid. Home Credit will need to create a model to determine which customers will pay and which will default in order to remain profitable and continue stable operations.
+
+#### Benefit of a Solution
+- The benefits of an accurate probability model include:
+  - Increased accuracy in predicting which customers are likely to default
+  - Increased accuracy in predicting which customers are likely to pay off their loans
+  - Removing the traditional banking requirement of a stable credit history to be approved for loans.
+  
+### Analytics Approach
+- To create a model that can accurately predict a customer’s likeliness of credit default, we will need to train a model using historical customer data given by Home Credit. This will be a supervised classification model that determines the probability of the target variable: credit default.Through the combination of calculating the significance of one
+variable and the relationship between multiple variables, a test set can be created to provide a probability of the target variable happening.
+
+### Purpose Questions 
+- Purpose of the EDA
+  - Explore the datasets and target variable
+  - Find strong predictors of the target variable
+  - Clean and prepare data for modeling
+  - Determine what needs to be done to create a model for predicting defaults
+- Questions
+  - How many defaults are there?
+  - What are the strongest predictors of default? 
+  - What are the different methods of data cleaning should I perform?
+  - Are there any outliers? How should I deal with them?
+  - How can I use the other datasets with the train and test sets?
+
+# Part 2
+## Target Variable Examination
+```{r}
+train <- read.csv("application_train.csv")
+test <- read.csv("application_test.csv")
+table(train$TARGET) #Counts how many 0 and 1s are in the target variable
+prop.table(table(train$TARGET)) * 100 #Proportion of 0s and 1s in target with total 
+
+ggplot(train, aes(x = factor(TARGET))) +
+  geom_bar() +
+  labs(title = "Train Set: Target Vs Not Target",
+       x = "Target (0 = No Default, 1 = Default)",
+       y = "Count")
+#Shows a bar graph of defaults and non defaults
+
+majority_train<- max(prop.table(table(train$TARGET)))
+print(majority_train)
+#Show the majority class based on the highest proportion (non defaults)
+
+
+
+```
+
+- Part 1 consists of completing an examination of the target variable
+- The target variable determines whether a customer default on the loan or not.
+- There are 282,686 non defaults and 24,825 defauls
+- The majority class is non defaults taking 91.93% of the data provided
+- What are the leading variables to predict default?
+
+# Part 3
+## Variable Relationships
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+install.packages("skimr", repos = "https://cran.rstudio.com")
+library(skimr)
+```
+```{r warning = FALSE}
+
+cor_matrix <- cor(train[, sapply(train, is.numeric)], use = "pairwise.complete.obs") 
+#grabs all the numeric variables and calculates its correlation in the train dataset. Any missing values are ignored
+high_corr <- sort(cor_matrix["TARGET", ], decreasing = TRUE) #creates the correlation between the numeric variables and the target variable in descending order.
+
+```
+- Highest positive correlations are days_birth (0.0782), region_rating_client (0.0589), and days_last_phone_change (0.05552).
+- In other words, younger customers, customers who are in regions with high risk ratings, and customers who recently change their phone are more likely to default.
+- Lowest correlations are high external credit sources and longer employment.
+
+# Part 4
+## Data Cleaning
+```{r echo = FALSE, warning = FALSE}
+install.packages("tidyverse", repos = "https://cran.rstudio.com")
+library(tidyverse)
+```
+```{r warning = FALSE}
+missing_train <- colSums(is.na(train)) # count missing values per column
+
+missing_pct_limit <- 0.33 #any columns missing over a third of data will be removed
+missing_pct <- colSums(is.na(train)) / nrow(train)  
+remove_col <- names(missing_pct[missing_pct > missing_pct_limit])
+t_clean <- train[, !colnames(train) %in% remove_col]
+#calculating % of missing for each column and removing the columns > 40% data missing
+
+t_clean <- t_clean[!duplicated(t_clean), ] #remove duplicate rows
+
+numbered <- sapply(t_clean, is.numeric)
+t_clean[numbered] <- lapply(t_clean[numbered], function(x) ifelse(is.na(x), median(x, na.rm = TRUE), x))
+#Any numeric columns that are missing data will be filled with the current median of that current column.Median is used for categories that are only 1/0 to only have whole numbers.
+
+variance <- apply(t_clean, 2, var, na.rm = TRUE) #calc variance for each column
+var_limit <- 0.01 #if variance is smaller than the limit, it'll be removed
+near_zero <- which(variance < var_limit)
+print(names(t_clean)[near_zero])
+t_clean <- t_clean[, -near_zero]
+```
+```{r warning = FALSE, message = FALSE}
+#same cleaning process for the test set
+missing_test <- colSums(is.na(test))
+
+missing_pct_limit <- 0.33 #any columns missing over a third of data will be removed
+missing_pct <- colSums(is.na(test)) / nrow(test)  
+remove_col <- names(missing_pct[missing_pct > missing_pct_limit])
+test_clean <- test[, !colnames(test) %in% remove_col]
+
+test_clean <- test_clean[!duplicated(test_clean), ] #remove duplicate rows
+
+numbered <- sapply(test_clean, is.numeric)
+test_clean[numbered] <- lapply(test_clean[numbered], function(x) ifelse(is.na(x), median(x, na.rm = TRUE), x))
+#Any numeric columns that are missing data will be filled with the current median of that current column.Median is used for categories that are only 1/0 to only have whole numbers.
+
+variance <- apply(test_clean, 2, var, na.rm = TRUE) #calc variance for each column
+var_limit <- 0.01 #if variance is smaller than the limit, it'll be removed
+near_zero <- which(variance < var_limit)
+print(names(test_clean)[near_zero])
+test_clean <- test_clean[, -near_zero]
+```
+- Cleaned data for the train set and test set
+- Removed any columns that were missing over a third of their data
+- Removed any duplicates
+- The remaining columns that are numeric and have missing data use the median to fill in the missing data
+- Any column that has a variance smaller than 0.01 is removed. They are removed because it isn't helpful for predicting the target variable.
+- How should I approach any outliers within the columns?
+- How should I transform and convert categorical variables?
+
+# Part 5
+## Joining Data Sets
+```{r echo = FALSE}
+install.packages("dplyr")  
+library(dplyr)
+```
+```{r}
+bureau <- read.csv("bureau.csv")
+
+agg <- bureau %>% #new df created to include customer ID, average credit sum, number of loans, and total credit 
+  group_by(SK_ID_CURR) %>%
+  summarise(mean_credit_sum = mean(AMT_CREDIT_SUM, na.rm = TRUE), 
+            loans = n(), 
+            total_credit_sum = sum(AMT_CREDIT_SUM, na.rm = TRUE))
+
+train_join <- left_join(train, agg, by = "SK_ID_CURR") #joins the train and agg data using the customer ID
+
+test_join <- left_join(test, agg, by = "SK_ID_CURR") #same with test set
+
+cor(train_join$mean_credit_sum, train_join$TARGET, use = "pairwise.complete.obs")
+cor(train_join$loans, train_join$TARGET, use = "pairwise.complete.obs")
+cor(train_join$total_credit_sum, train_join$TARGET, use = "pairwise.complete.obs")
+#find the correlation between average credit sum, # of loans, and total credit with the target variable
+```
+- We aggregated data from the bureau file to include in the train set.
+- Even with aggregated data, average credit sum, the number of loans, and total credit don't really help for predicting the target variable.
+- All correlations are very low. Therefore, we will need to find other variables as predictors. 
+- What other datasets should I explore for variables? 
+- What is the most efficient way to find these predicting variables?
+
+
+# Part 6
+## Results
+
+- I found that about 91% of loans have not defaulted. This proportion makes sense, so there were no concerns.
+
+- I found the correlations of each variable with the target variable. The top 3 predictors from this simple correlation calculation are days_birth (0.0782), region_rating_client (0.0589), and days_last_phone_change (0.05552).In other words, younger customers, customers who are in regions with high risk ratings, and customers who recently change their phone are more likely to default.
+
+- Data cleaning was necessary, especially due to working with such a large data set. Several steps were taken: Removed any columns that were missing over a third of their data, removed any duplicates, missing data in numerical columns use the median to fill in the missing data, and any column that has a variance smaller than 0.01 is removed.
+
+- More efforts in data cleaning can be taken.
+  - Examining outliers and dropping any that significantly affect the data for the wrong reason
+  - Transforming categorical variables to factors or finding a way to incorporate them into the model.
+  
+- Aggregated data from the "bureau" dataset with the train dataset to test more predictors.
+  - Average credit sum, the number of loans, and total credit had really low correlations to the target variable, so it wasn't very helpful.
+  
+- Overall, this is a good start. I became familiar with the target and several variables, cleaned data, tested some predictors, and have a better idea of what more needs to be done.
+  - I should find more ways to clean the data. Doing this will make it easier to find strong predictors for the target variable and make things easier to track.
+  - I need to figure out a plan for the categorical variables. There are probably strong predictors that I haven't looked into. 
+  - Determine some models I want to test after completing the data cleaning and preparation.
+  
+  
+  
+
+
+
